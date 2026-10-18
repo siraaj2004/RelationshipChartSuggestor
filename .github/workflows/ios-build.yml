@@ -1,4 +1,3 @@
-```yaml
 name: iOS Build
 
 on:
@@ -57,4 +56,4 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             GENERATE_INFOPLIST_FILE=YES \
             clean build
-```
+
