@@ -1,21 +1,60 @@
-- name: Install XcodeGen
-  run: |
-    brew install xcodegen
+```yaml
+name: iOS Build
 
-- name: Generate Xcode project
-  run: |
-    cd "$GITHUB_WORKSPACE"
-    test -f project.yml
-    xcodegen generate
-    test -d RelationshipChartSuggestor.xcodeproj
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
-- name: Build iOS Simulator app
-  run: |
-    xcodebuild \
-      -project RelationshipChartSuggestor.xcodeproj \
-      -scheme RelationshipChartSuggestor \
-      -sdk iphonesimulator \
-      -configuration Debug \
-      -destination 'generic/platform=iOS Simulator' \
-      CODE_SIGNING_ALLOWED=NO \
-      clean build
+jobs:
+  build:
+    name: Build RelationshipChartSuggestor
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: Locate project.yml
+        run: |
+          find . -name project.yml -not -path '*/.git/*'
+
+      - name: Generate Xcode project
+        run: |
+          test -f project.yml || {
+            echo "ERROR: project.yml must be in the repository root."
+            exit 1
+          }
+          xcodegen generate
+
+      - name: Verify generated project
+        run: |
+          test -d RelationshipChartSuggestor.xcodeproj
+          xcodebuild -list \
+            -project RelationshipChartSuggestor.xcodeproj
+
+      - name: Build iOS Simulator app
+        run: |
+          xcodebuild \
+            -project RelationshipChartSuggestor.xcodeproj \
+            -scheme RelationshipChartSuggestor \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            GENERATE_INFOPLIST_FILE=YES \
+            clean build
+```
