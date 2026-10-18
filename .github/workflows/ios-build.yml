@@ -1,42 +1,21 @@
+- name: Install XcodeGen
+  run: |
+    brew install xcodegen
 
-name: iOS Build
+- name: Generate Xcode project
+  run: |
+    cd "$GITHUB_WORKSPACE"
+    test -f project.yml
+    xcodegen generate
+    test -d RelationshipChartSuggestor.xcodeproj
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-jobs:
-  build:
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Check project files
-        run: |
-          pwd
-          ls -la
-          test -f project.yml
-
-      - name: Generate Xcode project
-        run: xcodegen generate --spec project.yml
-
-      - name: Build iOS app
-        run: |
-          xcodebuild \
-            -project RelationshipChartSuggestor.xcodeproj \
-            -scheme RelationshipChartSuggestor \
-            -sdk iphonesimulator \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+- name: Build iOS Simulator app
+  run: |
+    xcodebuild \
+      -project RelationshipChartSuggestor.xcodeproj \
+      -scheme RelationshipChartSuggestor \
+      -sdk iphonesimulator \
+      -configuration Debug \
+      -destination 'generic/platform=iOS Simulator' \
+      CODE_SIGNING_ALLOWED=NO \
+      clean build
