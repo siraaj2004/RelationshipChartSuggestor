@@ -1,0 +1,39 @@
+
+name: Build Relationship Chart Suggestor
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Get source code
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build iOS simulator version
+        run: |
+          xcodebuild \
+            -project RelationshipChartSuggestor.xcodeproj \
+            -scheme RelationshipChartSuggestor \
+            -sdk iphonesimulator \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Save build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-log
+          path: /tmp/ios-build.log
+          if-no-files-found: ignore
