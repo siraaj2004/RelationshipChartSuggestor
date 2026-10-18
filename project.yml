@@ -1,33 +1,25 @@
 name: RelationshipChartSuggestor
 
 options:
-  bundleIdPrefix: com.siraaj2004
   deploymentTarget:
     iOS: "16.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
 
 targets:
   RelationshipChartSuggestor:
     type: application
     platform: iOS
     sources:
-      - path: RelationshipChartSuggestorApp.swift
-      - path: ContentView.swift
+      - path: RelationshipChartSuggestor
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.siraaj2004.RelationshipChartSuggestor
-        SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1,2"
-
-  KeyboardExtension:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: KeyboardViewController.swift
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.siraaj2004.RelationshipChartSuggestor.KeyboardExtension
-        SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1,2"
+        PRODUCT_NAME: RelationshipChartSuggestor
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_NSExtension_NSExtensionPointIdentifier: com.apple.keyboard-service
-        INFOPLIST_KEY_NSExtension_NSExtensionAttributes_RequestsOpenAccess: YES
+        INFOPLIST_KEY_CFBundleDisplayName: RelationshipChartSuggestor
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
