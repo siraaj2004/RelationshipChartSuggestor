@@ -1,18 +1,17 @@
-name: iOS Build
+
+name: Build RelationshipChartSuggestor
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
-    name: Build RelationshipChartSuggestor
-    runs-on: macos-15
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -24,36 +23,43 @@ jobs:
           xcodebuild -version
 
       - name: Install XcodeGen
-        run: |
-          brew install xcodegen
-
-      - name: Locate project.yml
-        run: |
-          find . -name project.yml -not -path '*/.git/*'
+        run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: |
-          test -f project.yml || {
-            echo "ERROR: project.yml must be in the repository root."
-            exit 1
-          }
-          xcodegen generate
+        run: xcodegen generate
 
-      - name: Verify generated project
+      - name: List build targets
         run: |
-          test -d RelationshipChartSuggestor.xcodeproj
-          xcodebuild -list \
-            -project RelationshipChartSuggestor.xcodeproj
+          xcodebuild \
+            -project RelationshipChartSuggestor.xcodeproj \
+            -list
 
-      - name: Build iOS Simulator app
+      - name: Build app and embedded keyboard
         run: |
           xcodebuild \
             -project RelationshipChartSuggestor.xcodeproj \
             -scheme RelationshipChartSuggestor \
-            -sdk iphonesimulator \
             -configuration Debug \
+            -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
-            GENERATE_INFOPLIST_FILE=YES \
-            clean build
+            build
 
+      - name: Verify embedded keyboard
+        run: |
+          APP="build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app"
+          EXT="$APP/PlugIns/KeyboardExtension.appex"
+
+          test -d "$APP" || {
+            echo "Main app was not built"
+            exit 1
+          }
+
+          test -d "$EXT" || {
+            echo "Keyboard extension was not embedded"
+            find "$APP" -maxdepth 4 -print
+            exit 1
+          }
+
+          echo "SUCCESS: App and keyboard extension were built."
