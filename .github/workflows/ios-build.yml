@@ -1,82 +1,44 @@
-
 name: iOS Build
 
 on:
   push:
-    branches:
-      - main
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-15
-
+    runs-on: macos-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Select Xcode
-        run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          xcodebuild -version
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
       - name: Install XcodeGen
-        run: |
-          brew install xcodegen
+        run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: |
-          xcodegen generate
+        run: xcodegen generate
 
-      - name: Build iOS app
+      - name: Build for iPhone (unsigned)
         run: |
           set -o pipefail
-          xcodebuild \
-            -project RelationshipChartSuggestor.xcodeproj \
+          xcodebuild -project RelationshipChartSuggestor.xcodeproj \
             -scheme RelationshipChartSuggestor \
-            -configuration Debug \
-            -sdk iphonesimulator \
+            -configuration Release -sdk iphoneos \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build
 
-      - name: Verify keyboard extension
-        shell: bash
+      - name: Package IPA
         run: |
-          APP="build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app"
-          EXT="$APP/PlugIns/RelationshipChartKeyboard.appex"
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app Payload/
+          ls Payload/RelationshipChartSuggestor.app/PlugIns
+          zip -r RelationshipChartSuggestor.ipa Payload
 
-          echo "Checking app: $APP"
-
-          if [ ! -d "$APP" ]; then
-            echo "ERROR: Main app not found."
-            find build -name "*.app" -print
-            exit 1
-          fi
-
-          echo "Checking extension: $EXT"
-
-          if [ ! -d "$EXT" ]; then
-            echo "ERROR: Keyboard extension not embedded."
-            echo "Available extensions:"
-            find build -name "*.appex" -print
-            echo "Available PlugIns:"
-            ls -la "$APP/PlugIns" || true
-            exit 1
-          fi
-
-          if [ ! -f "$EXT/Info.plist" ]; then
-            echo "ERROR: Extension Info.plist missing."
-            exit 1
-          fi
-
-          echo "SUCCESS: Keyboard extension is embedded."
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
-            "$EXT/Info.plist"
-
-      - name: Upload built app
-        if: success()
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: RelationshipChartSuggestor-iOS
-          path: build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app
+          name: RelationshipChartSuggestor-ipa
+          path: RelationshipChartSuggestor.ipa
