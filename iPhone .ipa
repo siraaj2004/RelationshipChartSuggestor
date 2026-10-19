@@ -1,0 +1,20 @@
+- name: Build for device (unsigned)
+  run: |
+    set -o pipefail
+    xcodebuild -project RelationshipChartSuggestor.xcodeproj \
+      -scheme RelationshipChartSuggestor \
+      -configuration Release -sdk iphoneos \
+      -derivedDataPath build \
+      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+      build
+
+- name: Package IPA
+  run: |
+    mkdir Payload
+    cp -R build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app Payload/
+    zip -r RelationshipChartSuggestor.ipa Payload
+
+- uses: actions/upload-artifact@v4
+  with:
+    name: RelationshipChartSuggestor-ipa
+    path: RelationshipChartSuggestor.ipa
