@@ -1,3 +1,4 @@
+
 name: RelationshipChartSuggestor
 
 options:
@@ -7,6 +8,7 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
 
 targets:
   RelationshipChartSuggestor:
@@ -14,6 +16,9 @@ targets:
     platform: iOS
     sources:
       - path: RelationshipChartSuggestor
+    dependencies:
+      - target: KeyboardExtension
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.siraaj2004.RelationshipChartSuggestor
@@ -22,4 +27,17 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: RelationshipChartSuggestor
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         TARGETED_DEVICE_FAMILY: "1,2"
-        IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+
+  KeyboardExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: KeyboardExtension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.siraaj2004.RelationshipChartSuggestor.KeyboardExtension
+        PRODUCT_NAME: RelationshipChartKeyboard
+        INFOPLIST_FILE: KeyboardExtension/Info.plist
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
