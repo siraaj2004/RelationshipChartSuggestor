@@ -1,4 +1,45 @@
 
+name: iOS Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: |
+          brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          xcodegen generate
+
+      - name: Build iOS app
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project RelationshipChartSuggestor.xcodeproj \
+            -scheme RelationshipChartSuggestor \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
       - name: Verify keyboard extension
         shell: bash
         run: |
@@ -6,24 +47,36 @@
           EXT="$APP/PlugIns/RelationshipChartKeyboard.appex"
 
           echo "Checking app: $APP"
-          echo "Checking extension: $EXT"
 
           if [ ! -d "$APP" ]; then
-            echo "ERROR: Main app not found"
+            echo "ERROR: Main app not found."
+            find build -name "*.app" -print
             exit 1
           fi
 
+          echo "Checking extension: $EXT"
+
           if [ ! -d "$EXT" ]; then
-            echo "ERROR: Keyboard extension not embedded"
+            echo "ERROR: Keyboard extension not embedded."
+            echo "Available extensions:"
+            find build -name "*.appex" -print
             echo "Available PlugIns:"
             ls -la "$APP/PlugIns" || true
-            find build -name "*.appex" -print
             exit 1
           fi
 
           if [ ! -f "$EXT/Info.plist" ]; then
-            echo "ERROR: Extension Info.plist missing"
+            echo "ERROR: Extension Info.plist missing."
             exit 1
           fi
 
-          echo "SUCCESS: Keyboard extension is embedded"
+          echo "SUCCESS: Keyboard extension is embedded."
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
+            "$EXT/Info.plist"
+
+      - name: Upload built app
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RelationshipChartSuggestor-iOS
+          path: build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app
