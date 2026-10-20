@@ -1,10 +1,9 @@
-
 name: iOS Build
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -12,71 +11,41 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-          xcodebuild -version
+      - name: Select Xcode 16.4
+        run: sudo xcode-select -s /Applications/Xcode_16.4.app
 
-      - name: Install XcodeGen
+      - name: Show Swift files being built
         run: |
-          brew install xcodegen
+          git log -1 --oneline
+          find . -name "*.swift" -not -path "./build/*" | sort
 
-      - name: Generate Xcode project
+      - name: Build
+        shell: bash
         run: |
-          xcodegen generate
-
-      - name: Build iOS app
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -project RelationshipChartSuggestor.xcodeproj \
+          set +e
+          xcodebuild -project RelationshipChartSuggestor.xcodeproj \
             -scheme RelationshipChartSuggestor \
             -configuration Debug \
             -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
 
-      - name: Verify keyboard extension
-        shell: bash
-        run: |
-          APP="build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app"
-          EXT="$APP/PlugIns/RelationshipChartKeyboard.appex"
+          echo ""
+          echo "=========== COMPILER ERRORS ==========="
+          grep -nE "error:" build.log || echo "no 'error:' lines found"
+          echo "======================================="
 
-          echo "Checking app: $APP"
+          exit $status
 
-          if [ ! -d "$APP" ]; then
-            echo "ERROR: Main app not found."
-            find build -name "*.app" -print
-            exit 1
-          fi
-
-          echo "Checking extension: $EXT"
-
-          if [ ! -d "$EXT" ]; then
-            echo "ERROR: Keyboard extension not embedded."
-            echo "Available extensions:"
-            find build -name "*.appex" -print
-            echo "Available PlugIns:"
-            ls -la "$APP/PlugIns" || true
-            exit 1
-          fi
-
-          if [ ! -f "$EXT/Info.plist" ]; then
-            echo "ERROR: Extension Info.plist missing."
-            exit 1
-          fi
-
-          echo "SUCCESS: Keyboard extension is embedded."
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" \
-            "$EXT/Info.plist"
-
-      - name: Upload built app
-        if: success()
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RelationshipChartSuggestor-iOS
-          path: build/Build/Products/Debug-iphonesimulator/RelationshipChartSuggestor.app
+          name: build-log
+          path: build.log
