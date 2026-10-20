@@ -1,44 +1,47 @@
 import UIKit
 
 final class KeyboardViewController: UIInputViewController {
+
     private let languageLabel = UILabel()
-    private let suggestionStack = UIStackView()
-    private let globeButton = UIButton(type: .system)
-    private var pastedText: String?
+    private let stack = UIStackView()
+    private var current: [ChartSuggestion] = []
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.heightAnchor.constraint(equalToConstant: 250).isActive = true
 
-        languageLabel.font = .systemFont(ofSize: 13, weight: .semibold)
+        languageLabel.font = .systemFont(ofSize: 13, weight: .medium)
         languageLabel.textColor = .secondaryLabel
-        languageLabel.text = "Type or paste a chat"
+        languageLabel.text = "Type to get chart suggestions"
+        languageLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let paste = makeSmallButton(title: "Paste chat", action: #selector(pasteTapped))
-        let delete = makeSmallButton(title: "⌫", action: #selector(deleteTapped))
-        globeButton.setTitle("🌐", for: .normal)
-        globeButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
-        globeButton.isHidden = !needsInputModeSwitchKey
+        stack.axis = .vertical
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
-        let header = UIStackView(arrangedSubviews: [globeButton, languageLabel, UIView(), paste, delete])
-        header.axis = .horizontal
-        header.spacing = 12
-        header.alignment = .center
+        let nextKey = UIButton(type: .system)
+        nextKey.setTitle("🌐", for: .normal)
+        nextKey.titleLabel?.font = .systemFont(ofSize: 22)
+        nextKey.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        nextKey.translatesAutoresizingMaskIntoConstraints = false
 
-        suggestionStack.axis = .vertical
-        suggestionStack.spacing = 6
-        suggestionStack.distribution = .fillEqually
+        view.addSubview(languageLabel)
+        view.addSubview(stack)
+        view.addSubview(nextKey)
 
-        let root = UIStackView(arrangedSubviews: [header, suggestionStack])
-        root.axis = .vertical
-        root.spacing = 8
-        root.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(root)
         NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
-            root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 10),
-            root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
-            root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8)
+            languageLabel.topAnchor.constraint(equalTo: view.topAnchor, constant: 8),
+            languageLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            languageLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+            stack.topAnchor.constraint(equalTo: languageLabel.bottomAnchor, constant: 8),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+
+            nextKey.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            nextKey.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -8),
+            nextKey.topAnchor.constraint(greaterThanOrEqualTo: stack.bottomAnchor, constant: 8),
+
+            view.heightAnchor.constraint(equalToConstant: 260)
         ])
         refresh()
     }
@@ -48,51 +51,41 @@ final class KeyboardViewController: UIInputViewController {
         refresh()
     }
 
-    private func makeSmallButton(title: String, action: Selector) -> UIButton {
-        let b = UIButton(type: .system)
-        b.setTitle(title, for: .normal)
-        b.titleLabel?.font = .systemFont(ofSize: 14, weight: .medium)
-        b.addTarget(self, action: action, for: .touchUpInside)
-        return b
-    }
-
-    @objc private func pasteTapped() {
-        guard hasFullAccess, let s = UIPasteboard.general.string, !s.isEmpty else {
-            languageLabel.text = "Enable Allow Full Access, then copy a message"
-            return
-        }
-        pastedText = s
-        refresh()
-    }
-
-    @objc private func deleteTapped() {
-        textDocumentProxy.deleteBackward()
+    private func fullText() -> String {
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        let after = textDocumentProxy.documentContextAfterInput ?? ""
+        return before + " " + after
     }
 
     private func refresh() {
-        let typed = (textDocumentProxy.documentContextBeforeInput ?? "")
-            + (textDocumentProxy.documentContextAfterInput ?? "")
-        let source = typed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? (pastedText ?? "") : typed
-        guard !source.isEmpty else { return }
+        let text = fullText()
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
-        let (lang, suggestions) = ChartSuggester.analyze(source)
-        languageLabel.text = "Detected: \(lang.rawValue)"
-
-        suggestionStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        for s in suggestions {
-            var config = UIButton.Configuration.tinted()
-            config.title = s.text
-            config.baseForegroundColor = .label
-            config.titleAlignment = .leading
-            config.titleLineBreakMode = .byTruncatingTail
-            config.contentInsets = NSDirectionalEdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10)
-            let b = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
-                self?.textDocumentProxy.insertText(s.text)
-                self?.pastedText = nil
-            })
-            b.contentHorizontalAlignment = .leading
-            suggestionStack.addArrangedSubview(b)
+        guard !trimmed.isEmpty else {
+            languageLabel.text = "Type to get chart suggestions"
+            return
         }
+
+        let language = LanguageDetector.detect(text)
+        languageLabel.text = "Detected: \(language.rawValue)"
+        current = ChartSuggestor.suggest(for: text)
+
+        for (index, s) in current.prefix(3).enumerated() {
+            let b = UIButton(type: .system)
+            b.setTitle("\(s.chart.rawValue) - \(s.chart.purpose)", for: .normal)
+            b.contentHorizontalAlignment = .leading
+            b.backgroundColor = .secondarySystemBackground
+            b.layer.cornerRadius = 10
+            b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+            b.tag = index
+            b.addTarget(self, action: #selector(tapSuggestion(_:)), for: .touchUpInside)
+            stack.addArrangedSubview(b)
+        }
+    }
+
+    @objc private func tapSuggestion(_ sender: UIButton) {
+        guard current.indices.contains(sender.tag) else { return }
+        textDocumentProxy.insertText(current[sender.tag].chart.rawValue + " ")
     }
 }
