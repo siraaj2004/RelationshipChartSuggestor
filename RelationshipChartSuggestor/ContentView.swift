@@ -1,49 +1,71 @@
 import SwiftUI
 
+enum RelationshipType: String, CaseIterable, Identifiable {
+    case friendship = "Friendship"
+    case family = "Family"
+    case team = "Team / Colleagues"
+    case network = "Social Network"
+
+    var id: String { rawValue }
+
+    var suggestions: [ChartSuggestion] {
+        switch self {
+        case .friendship:
+            return [
+                ChartSuggestion(name: "Sociogram", detail: "Shows who is connected to whom and how strongly."),
+                ChartSuggestion(name: "Venn Diagram", detail: "Shows shared interests between people.")
+            ]
+        case .family:
+            return [
+                ChartSuggestion(name: "Genogram", detail: "Family tree with relationship quality."),
+                ChartSuggestion(name: "Ecomap", detail: "Family connections to outside groups.")
+            ]
+        case .team:
+            return [
+                ChartSuggestion(name: "Org Chart", detail: "Reporting lines and roles."),
+                ChartSuggestion(name: "RACI Matrix", detail: "Who is responsible, accountable, consulted, informed.")
+            ]
+        case .network:
+            return [
+                ChartSuggestion(name: "Network Graph", detail: "Nodes and edges for large groups."),
+                ChartSuggestion(name: "Chord Diagram", detail: "Strength of links between groups.")
+            ]
+        }
+    }
+}
+
+struct ChartSuggestion: Identifiable {
+    let id = UUID()
+    let name: String
+    let detail: String
+}
+
 struct ContentView: View {
-    @State private var testText = ""
+    @State private var selected: RelationshipType = .friendship
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    Text("Relationship Chart Suggestor")
-                        .font(.largeTitle.bold())
-
-                    Text("Enable the keyboard to get relationship chart suggestions while you type in any app.")
-                        .foregroundColor(.secondary)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Setup").font(.headline)
-                        Label("Open Settings > General > Keyboard > Keyboards", systemImage: "1.circle.fill")
-                        Label("Tap Add New Keyboard and choose Relationship Chart", systemImage: "2.circle.fill")
-                        Label("Tap it again and turn on Allow Full Access if needed", systemImage: "3.circle.fill")
-                    }
-                    .padding()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(12)
-
-                    Button {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    } label: {
-                        Label("Open Settings", systemImage: "gearshape.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Try it here").font(.headline)
-                        TextField("Tap, then switch to the new keyboard", text: $testText)
-                            .textFieldStyle(.roundedBorder)
+            VStack(spacing: 16) {
+                Picker("Relationship", selection: $selected) {
+                    ForEach(RelationshipType.allCases) { type in
+                        Text(type.rawValue).tag(type)
                     }
                 }
-                .padding()
+                .pickerStyle(.segmented)
+                .padding(.horizontal)
+
+                List(selected.suggestions) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.name).font(.headline)
+                        Text(item.detail)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .listStyle(.insetGrouped)
             }
-            .navigationTitle("Home")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Chart Suggestor")
         }
     }
 }
