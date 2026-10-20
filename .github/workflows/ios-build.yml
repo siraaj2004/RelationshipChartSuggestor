@@ -23,32 +23,24 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
-      - name: Locate generated project
-        id: locate
+      - name: Check for duplicate type declarations
         run: |
-          PROJECT_PATH=$(find . -maxdepth 3 -name "*.xcodeproj" -not -path "*/build/*" -not -path "*/Pods/*" | head -n 1)
-          if [ -z "$PROJECT_PATH" ]; then
-            echo "No .xcodeproj generated. Check project.yml."
+          DUPES=$(grep -rhoE "^(struct|class|enum) [A-Za-z0-9_]+" --include=*.swift RelationshipChartSuggestor KeyboardExtension 2>/dev/null | sort | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "Duplicate declarations found:"
+            echo "$DUPES"
             exit 1
           fi
-          echo "Found: $PROJECT_PATH"
-          echo "project=$PROJECT_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Detect scheme
-        id: scheme
+      - name: Build app (includes keyboard extension)
         run: |
-          xcodebuild -list -project "${{ steps.locate.outputs.project }}"
-          SCHEME=$(xcodebuild -list -json -project "${{ steps.locate.outputs.project }}" | jq -r '.project.schemes[0]')
-          echo "Using scheme: $SCHEME"
-          echo "name=$SCHEME" >> "$GITHUB_OUTPUT"
-
-      - name: Build
-        run: |
-          xcodebuild -project "${{ steps.locate.outputs.project }}" \
-            -scheme "${{ steps.scheme.outputs.name }}" \
+          set -o pipefail
+          xcodebuild -project RelationshipChartSuggestor.xcodeproj \
+            -scheme RelationshipChartSuggestor \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+          test ${PIPESTATUS[0]} -eq 0
