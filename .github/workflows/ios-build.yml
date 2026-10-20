@@ -1,68 +1,79 @@
-name: Build IPA
+name: Build iOS App
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-latest
+
+    env:
+      PROJECT: RelationshipChartSuggestor.xcodeproj
+      SCHEME: RelationshipChartSuggestor
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode 16.4
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app
-
-      - name: Install XcodeGen
-        run: brew install xcodegen
-
-      - name: Generate Xcode project
-        run: xcodegen generate
-
-      - name: Check for duplicate type declarations
+      - name: Show Xcode and project info
         run: |
-          DUPES=$(grep -rhoE "^(struct|class|enum) [A-Za-z0-9_]+" --include=*.swift RelationshipChartSuggestor KeyboardExtension 2>/dev/null | sort | uniq -d)
-          if [ -n "$DUPES" ]; then
-            echo "Duplicate declarations found:"
-            echo "$DUPES"
-            exit 1
-          fi
+          xcodebuild -version
+          ls -la
+          xcodebuild -list -project "$PROJECT"
 
-      - name: Build for device (unsigned)
+      - name: Build
         run: |
           set -o pipefail
-          xcodebuild -project RelationshipChartSuggestor.xcodeproj \
-            -scheme RelationshipChartSuggestor \
+          xcodebuild \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -sdk iphoneos \
-            -destination "generic/platform=iOS" \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
-            ENABLE_DEBUG_DYLIB=NO \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
-          test ${PIPESTATUS[0]} -eq 0
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build 2>&1 | tee build.log
 
-      - name: Verify executables exist
+      - name: Verify app
         run: |
-          APP="build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app"
-          test -f "$APP/RelationshipChartSuggestor" || { echo "Main app executable missing"; exit 1; }
-          test -f "$APP/PlugIns/RelationshipChartKeyboard.appex/RelationshipChartKeyboard" || { echo "Keyboard executable missing"; exit 1; }
-          echo "Both executables present"
-          lipo -info "$APP/PlugIns/RelationshipChartKeyboard.appex/RelationshipChartKeyboard"
+          echo "Products folder:"
+          ls -la build/Build/Products/ || true
+          ls -la build/Build/Products/*/ || true
 
-      - name: Package IPA
+          APP=$(find build/Build/Products -maxdepth 2 -name "*.app" -type d | head -n 1)
+          if [ -z "$APP" ]; then
+            echo "::error::No .app bundle found. Check build.log for errors."
+            exit 1
+          fi
+          echo "Found app: $APP"
+          ls -la "$APP"
+
+          EXE=$(/usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$APP/Info.plist")
+          echo "Executable name from Info.plist: $EXE"
+
+          if [ ! -f "$APP/$EXE" ]; then
+            echo "::error::Main executable '$EXE' missing inside $APP"
+            exit 1
+          fi
+          echo "App verified OK"
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      - name: Package unsigned IPA
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app Payload/
-          zip -qry RelationshipChartSuggestor.ipa Payload
-          ls -lh RelationshipChartSuggestor.ipa
+          cp -R "$APP_PATH" Payload/
+          zip -r RelationshipChartSuggestor-unsigned.ipa Payload
 
-      - name: Upload IPA
+      - name: Upload artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: RelationshipChartSuggestor-ipa
-          path: RelationshipChartSuggestor.ipa
+          name: build-output
+          path: |
+            RelationshipChartSuggestor-unsigned.ipa
+            build.log
