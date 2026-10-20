@@ -17,25 +17,35 @@ jobs:
       - name: Select Xcode 16.4
         run: sudo xcode-select -s /Applications/Xcode_16.4.app
 
-      - name: Locate Xcode project
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Locate generated project
         id: locate
         run: |
-          PROJECT_PATH=$(find . -maxdepth 4 -name "RelationshipChartSuggestor.xcodeproj" -not -path "*/build/*" | head -n 1)
+          PROJECT_PATH=$(find . -maxdepth 3 -name "*.xcodeproj" -not -path "*/build/*" -not -path "*/Pods/*" | head -n 1)
           if [ -z "$PROJECT_PATH" ]; then
-            echo "RelationshipChartSuggestor.xcodeproj not found. Projects in repo:"
-            find . -maxdepth 4 \( -name "*.xcodeproj" -o -name "*.xcworkspace" -o -name "project.yml" \)
+            echo "No .xcodeproj generated. Check project.yml."
             exit 1
           fi
           echo "Found: $PROJECT_PATH"
           echo "project=$PROJECT_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: List schemes
-        run: xcodebuild -list -project "${{ steps.locate.outputs.project }}"
+      - name: Detect scheme
+        id: scheme
+        run: |
+          xcodebuild -list -project "${{ steps.locate.outputs.project }}"
+          SCHEME=$(xcodebuild -list -json -project "${{ steps.locate.outputs.project }}" | jq -r '.project.schemes[0]')
+          echo "Using scheme: $SCHEME"
+          echo "name=$SCHEME" >> "$GITHUB_OUTPUT"
 
       - name: Build
         run: |
           xcodebuild -project "${{ steps.locate.outputs.project }}" \
-            -scheme RelationshipChartSuggestor \
+            -scheme "${{ steps.scheme.outputs.name }}" \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination "generic/platform=iOS Simulator" \
