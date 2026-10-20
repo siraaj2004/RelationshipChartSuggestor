@@ -1,68 +1,88 @@
 import SwiftUI
 import PhotosUI
+import Vision
 
 struct ContentView: View {
-    @StateObject private var vm = ChatViewModel()
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var chat = ""
+    @State private var photo: PhotosPickerItem?
+    @State private var copiedID: UUID?
+
+    private var language: ChatLanguage { LanguageDetector.detect(chat) }
+    private var suggestions: [ChartSuggestion] { ChartSuggester.suggest(for: chat, language: language) }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    PhotosPicker(selection: $pickerItem, matching: .images) {
-                        Label("Select chat screenshot", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.accentColor.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Paste their message, or scan a chat screenshot")
+                        .font(.subheadline).foregroundStyle(.secondary)
+
+                    TextEditor(text: $chat)
+                        .frame(height: 130)
+                        .padding(8)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+
+                    HStack {
+                        PhotosPicker(selection: $photo, matching: .images) {
+                            Label("Scan screenshot", systemImage: "text.viewfinder")
+                        }
+                        Spacer()
+                        Button("Clear") { chat = "" }
                     }
 
-                    if vm.isLoading { ProgressView("Scanning…").frame(maxWidth: .infinity) }
-                    if let err = vm.errorMessage { Text(err).foregroundStyle(.red) }
+                    if !chat.isEmpty {
+                        Label("Detected: \(language.rawValue)", systemImage: "globe")
+                            .font(.headline)
 
-                    if let img = vm.image {
-                        Image(uiImage: img)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxHeight: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-
-                    if !vm.lines.isEmpty {
-                        HStack {
-                            Label(vm.language.rawValue, systemImage: "globe")
-                            Spacer()
-                            Text("Intent: \(vm.intent.rawValue)").foregroundStyle(.secondary)
-                        }
-                        .font(.subheadline)
-
-                        Text("Suggested replies").font(.headline)
-                        ForEach(vm.suggestions) { s in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(s.tone).font(.caption).foregroundStyle(.secondary)
-                                Text(s.text)
-                                Button("Copy") { UIPasteboard.general.string = s.text }
-                                    .font(.caption)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .background(Color(.secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        }
-
-                        DisclosureGroup("Scanned text") {
-                            Text(vm.lines.joined(separator: "\n"))
-                                .font(.footnote)
+                        ForEach(suggestions) { s in
+                            Button {
+                                UIPasteboard.general.string = s.text
+                                copiedID = s.id
+                            } label: {
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(s.label).font(.caption).foregroundStyle(.secondary)
+                                        Text(s.text).multilineTextAlignment(.leading)
+                                    }
+                                    Spacer()
+                                    Image(systemName: copiedID == s.id ? "checkmark" : "doc.on.doc")
+                                }
+                                .padding(12)
                                 .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
                         }
+                    }
+
+                    GroupBox("Enable the keyboard") {
+                        Text("Settings › General › Keyboard › Keyboards › Add New Keyboard › RelationshipChart. Then tap it and turn on Allow Full Access (needed for the Paste button). Use 🌐 to switch keyboards.")
+                            .font(.footnote)
                     }
                 }
                 .padding()
             }
-            .navigationTitle("Relationship Suggestor")
+            .navigationTitle("Chat Suggestor")
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data)?.cgImage {
+                        chat = await recognizeText(in: image)
+                    }
+                }
+            }
         }
-        .onChange(of: pickerItem) { _, newItem in
-            Task { await vm.load(newItem) }
-        }
+    }
+
+    private func recognizeText(in image: CGImage) async -> String {
+        await Task.detached {
+            let request = VNRecognizeTextRequest()
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = false   // keeps Roman Urdu/Telugu intact
+            try? VNImageRequestHandler(cgImage: image).perform([request])
+            let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+            return lines.suffix(8).joined(separator: "\n")   // last few messages
+        }.value
     }
 }
