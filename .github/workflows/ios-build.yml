@@ -1,9 +1,8 @@
-name: iOS Build
+name: Build IPA
 
 on:
   push:
     branches: [ main ]
-  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -32,15 +31,38 @@ jobs:
             exit 1
           fi
 
-      - name: Build app (includes keyboard extension)
+      - name: Build for device (unsigned)
         run: |
           set -o pipefail
           xcodebuild -project RelationshipChartSuggestor.xcodeproj \
             -scheme RelationshipChartSuggestor \
-            -configuration Debug \
-            -sdk iphonesimulator \
-            -destination "generic/platform=iOS Simulator" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath build \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            ENABLE_DEBUG_DYLIB=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           test ${PIPESTATUS[0]} -eq 0
+
+      - name: Verify executables exist
+        run: |
+          APP="build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app"
+          test -f "$APP/RelationshipChartSuggestor" || { echo "Main app executable missing"; exit 1; }
+          test -f "$APP/PlugIns/RelationshipChartKeyboard.appex/RelationshipChartKeyboard" || { echo "Keyboard executable missing"; exit 1; }
+          echo "Both executables present"
+          lipo -info "$APP/PlugIns/RelationshipChartKeyboard.appex/RelationshipChartKeyboard"
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app Payload/
+          zip -qry RelationshipChartSuggestor.ipa Payload
+          ls -lh RelationshipChartSuggestor.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RelationshipChartSuggestor-ipa
+          path: RelationshipChartSuggestor.ipa
