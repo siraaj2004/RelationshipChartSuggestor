@@ -1,8 +1,8 @@
-name: Build IPA
+name: Build unsigned IPA
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -11,14 +11,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Show Xcode version
+        run: xcodebuild -version
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Lint Info.plist files
+        run: |
+          for f in App/Info.plist KeyboardExtension/Info.plist; do
+            echo "=== $f ==="
+            head -n 5 "$f"
+            plutil -lint "$f"
+          done
+
       - name: Build
         run: |
+          set -o pipefail
           xcodebuild build \
             -project RelationshipChartSuggestor.xcodeproj \
             -scheme RelationshipChartSuggestor \
@@ -26,4 +38,31 @@ jobs:
             -sdk iphoneos \
             -destination generic/platform=iOS \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= \
+            | tee build.log
+
+      - name: Check the keyboard extension is inside the app
+        run: |
+          APP=build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app
+          ls "$APP/PlugIns"
+          test -d "$APP/PlugIns/RelationshipChartKeyboard.appex"
+
+      - name: Package IPA
+        run: |
+          rm -rf Payload RelationshipChartSuggestor.ipa
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/RelationshipChartSuggestor.app Payload/
+          zip -qry RelationshipChartSuggestor.ipa Payload
+          ls -lh RelationshipChartSuggestor.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RelationshipChartSuggestor-ipa
+          path: RelationshipChartSuggestor.ipa
+
+      - name: Upload build log if the build failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
