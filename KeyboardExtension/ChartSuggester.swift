@@ -1,183 +1,177 @@
 import Foundation
 
-enum ChatLanguage: String, CaseIterable {
+// MARK: - Languages
+
+enum TextLang: String {
     case english = "English"
-    case romanUrdu = "Roman Urdu"
     case romanTelugu = "Roman Telugu"
+    case romanUrdu = "Roman Urdu"
 }
 
-struct ChartSuggestion: Identifiable, Hashable {
-    let id = UUID()
-    let label: String
-    let text: String
-}
+struct LanguageDetector {
 
-// MARK: - Language detection
+    // Common English words (stopwords + everyday words)
+    static let english: Set<String> = [
+        "i","me","my","we","our","you","your","he","she","it","they","them","his","her","their",
+        "is","am","are","was","were","be","been","do","does","did","have","has","had",
+        "the","a","an","and","or","but","not","no","yes","of","to","in","on","at","for","with",
+        "from","by","about","as","this","that","these","those","what","who","how","why","when",
+        "where","which","will","can","could","would","should","if","so","very","too","also",
+        "hello","hi","thanks","please","good","bad","work","home","live","lives","living",
+        "mother","father","brother","sister","friend","friends","family","boss","manager",
+        "team","colleague","wife","husband","son","daughter","uncle","aunt","grandmother",
+        "grandfather","cousin","neighbor","teacher","school","office","company","main"
+    ]
 
-enum LanguageDetector {
-    private static let urduWords: Set<String> = [
-        "kya","kia","hai","hain","nahi","nahin","acha","accha","theek","thik","yaar","bhai",
-        "kaise","kaisi","kaisa","tum","aap","mujhe","mujhy","mera","meri","tera","teri",
-        "kahan","kab","kyun","kyu","bohat","bahut","buhat","shukriya","jaan","janu","chalo",
-        "abhi","phir","lekin","magar","hun","hoon","tha","thi","raha","rahi","karo","batao",
-        "btao","sach","khana","khaya","pyar","mohabbat","dil","inshallah","mashallah",
-        "assalamualaikum","salam","yaad","maaf","udaas","pareshan","subah","raat","sojao"
+    // Roman Telugu (avoid words that are also common English: "em", "main", etc.)
+    static let telugu: Set<String> = [
+        "nenu","nuvvu","meeru","memu","manam","vaadu","aame","ela","enti","ekkada","evaru",
+        "cheppu","undi","unnanu","unnav","unnaru","ledu","avunu","kadu","kaadu","amma","nanna",
+        "anna","akka","thammudu","tammudu","chelli","chelli","snehitudu","snehitulu","bagunnava",
+        "bagunnanu","chesthunnav","chesthunna","vachanu","vachindi","povali","raavali","inti",
+        "illu","pani","office","baagundi","tatha","nanamma","ammamma","bava","mama","atta",
+        "maradalu","koduku","kuturu","bhaarya","bharta","friend","pelli","andaru","kaani","mari"
     ]
-    private static let teluguWords: Set<String> = [
-        "nenu","nuvvu","meeru","emi","em","ela","ekkada","enduku","eppudu","ledu","undi",
-        "unnava","unnaru","unnavu","chala","bagundi","bagunnava","bagunnara","cheppu",
-        "cheppandi","cheyyi","chesava","chestunnav","tinnava","thinnava","vachava","vastava",
-        "ayyindi","kada","antav","naku","naaku","neeku","nee","naa","manam","pilla","babu",
-        "amma","nanna","sare","avunu","ayithe","kani","inka","ippudu","repu","ninna","anna",
-        "akka","prema","ishtam","nachindi","nidra","podam","randi","telusu","teliyadu",
-        "emaindi","gurthu","gurtu","kshaminchu","dhanyavadalu","subhodayam","subharatri"
-    ]
-    private static let englishWords: Set<String> = [
-        "the","is","are","you","i","my","me","what","how","where","when","why","have","do",
-        "does","did","will","would","can","good","love","miss","thanks","thank","please",
-        "sorry","hello","hi","hey","today","tonight","night","morning","with","and","to",
-        "of","it","this","that","was","not","just","so","your","we","day","like","want"
+
+    // Roman Urdu / Hindi-Urdu (avoid "main" which is also English)
+    static let urdu: Set<String> = [
+        "mein","mai","hum","tum","aap","tu","woh","wo","yeh","ye","kya","kaise","kahan","kaun",
+        "hai","hain","hoon","ho","nahi","nahin","acha","accha","theek","thik","ammi","abbu",
+        "ami","abu","bhai","bhaiya","behan","baji","dost","dosti","kaam","ghar","shukriya",
+        "bohat","bahut","karna","karta","karti","tha","thi","the","aur","lekin","mera","meri",
+        "tera","teri","humara","unka","unki","beta","beti","chacha","chachi","mama","khala",
+        "dada","dadi","nana","nani","shauhar","biwi","walid","walida","rishta","rishtedar"
     ]
 
     static func tokens(_ text: String) -> [String] {
-        let collapsed = text.lowercased()
-            .replacingOccurrences(of: "(.)\\1{2,}", with: "$1", options: .regularExpression)
-        return collapsed.components(separatedBy: CharacterSet.letters.inverted)
+        text.lowercased()
+            .components(separatedBy: CharacterSet.letters.inverted)
             .filter { !$0.isEmpty }
     }
 
-    static func detect(_ text: String) -> ChatLanguage {
-        var urdu = 0, telugu = 0, english = 0
-        for s in text.unicodeScalars {
-            switch s.value {
-            case 0x0600...0x06FF: urdu += 3      // Urdu/Arabic script
-            case 0x0C00...0x0C7F: telugu += 3    // Telugu script
-            default: break
-            }
-        }
-        for w in tokens(text) {
-            if urduWords.contains(w) { urdu += 2 }
-            if teluguWords.contains(w) { telugu += 2 }
-            if englishWords.contains(w) { english += 1 }
-        }
-        if urdu == 0 && telugu == 0 { return .english }
-        if telugu > urdu && telugu > english { return .romanTelugu }
-        if urdu > telugu && urdu > english { return .romanUrdu }
-        return .english
+    /// Returns the detected language and the raw score of each language.
+    static func detect(_ text: String) -> (lang: TextLang, scores: [TextLang: Int]) {
+        let words = tokens(text)
+        let e = words.filter { english.contains($0) }.count
+        let t = words.filter { telugu.contains($0) }.count
+        let u = words.filter { urdu.contains($0) }.count
+        let scores: [TextLang: Int] = [.english: e, .romanTelugu: t, .romanUrdu: u]
+
+        // Nothing recognised at all -> default to English
+        if e == 0 && t == 0 && u == 0 { return (.english, scores) }
+
+        // Pick highest; ties favour the romanised language (English is the fallback)
+        if t > e && t >= u { return (.romanTelugu, scores) }
+        if u > e && u > t { return (.romanUrdu, scores) }
+        if t == e && t > u && t > 0 { return (.romanTelugu, scores) }
+        if u == e && u > t && u > 0 { return (.romanUrdu, scores) }
+        return (.english, scores)
     }
 }
 
-// MARK: - Intent detection
+// MARK: - Charts
 
-enum ChatIntent: CaseIterable {
-    case missYou, goodNight, goodMorning, sorry, sad, thanks, food, plans, compliment, howAreYou, greeting, general
+enum ChartType: String, CaseIterable {
+    case genogram = "Genogram"
+    case sociogram = "Sociogram"
+    case ecomap = "Ecomap"
+    case orgChart = "Org Chart"
+    case networkGraph = "Network Graph"
 
-    var phrases: [String] {
+    var why: String {
         switch self {
-        case .missYou: return ["miss","missing","yaad","gurthu","gurtu"]
-        case .goodNight: return ["good night","gn","shab bakhair","shabbakhair","subharatri","shubha ratri","sojao","so jao","nidra","padukondi"]
-        case .goodMorning: return ["good morning","gm","subah","subha","subhodayam","shubhodayam"]
-        case .sorry: return ["sorry","sry","maaf","maafi","kshaminchu","kshaminchandi"]
-        case .sad: return ["sad","upset","udaas","pareshan","bore","bored","depressed","badha","badhaga","bejar"]
-        case .thanks: return ["thanks","thank","thx","shukriya","shukria","dhanyavadalu"]
-        case .food: return ["khana","khaya","lunch","dinner","eat","ate","tinnava","thinnava","bhojanam","breakfast"]
-        case .plans: return ["meet","milte","milna","plan","free","fursat","kalusukundam","kalavali","weekend"]
-        case .compliment: return ["beautiful","cute","handsome","pyari","khoobsurat","andam","andamga"]
-        case .howAreYou: return ["how are","kaise","kaisi","kaisa","haal","unnava","unnavu","bagunnava","bagunnara","wyd","chestunnav","kar rahe","kar rahi"]
-        case .greeting: return ["hi","hello","hey","salam","assalam","assalamualaikum","namaste","namaskaram"]
-        case .general: return []
+        case .genogram:     return "Family relationships detected - a Genogram maps family members and generations."
+        case .sociogram:    return "Friends / social ties detected - a Sociogram shows who is connected to whom."
+        case .ecomap:       return "Support systems and community detected - an Ecomap shows external connections."
+        case .orgChart:     return "Work hierarchy detected - an Org Chart shows who reports to whom."
+        case .networkGraph: return "Mixed or many connections - a Network Graph is the most flexible choice."
         }
-    }
-
-    static func detect(_ text: String) -> ChatIntent {
-        let recent = String(text.suffix(160))
-        let padded = " " + LanguageDetector.tokens(recent).joined(separator: " ") + " "
-        for intent in ChatIntent.allCases where intent != .general {
-            for p in intent.phrases where padded.contains(" \(p) ") { return intent }
-        }
-        return .general
     }
 }
 
-// MARK: - Suggestions
+struct ChartSuggestion {
+    let language: TextLang
+    let chart: ChartType
+    let scores: [ChartType: Int]
+}
 
-enum ChartSuggester {
-    static func suggest(for text: String, language: ChatLanguage) -> [ChartSuggestion] {
-        let intent = ChatIntent.detect(text)
-        var out = replies(intent, language).map { ChartSuggestion(label: "Reply", text: $0) }
-        let starters = conversationStarters[language] ?? []
-        if !starters.isEmpty {
-            out.append(ChartSuggestion(label: "Starter", text: starters[text.count % starters.count]))
-        }
-        return Array(out.prefix(4))
-    }
+struct ChartSuggestor {
 
-    static func analyze(_ text: String) -> (ChatLanguage, [ChartSuggestion]) {
-        let lang = LanguageDetector.detect(text)
-        return (lang, suggest(for: text, language: lang))
-    }
-
-    private static let conversationStarters: [ChatLanguage: [String]] = [
-        .english: ["What's one thing that made you smile this week?",
-                   "If we could go anywhere together, where would you pick?",
-                   "What's your favourite way to spend a lazy day?"],
-        .romanUrdu: ["Is hafte kis cheez ne tumhein sabse zyada khush kiya?",
-                     "Agar hum kahin bhi ja sakte, tum kahan jana chahogi/chahoge?",
-                     "Tumhara pasandida tareeqa kya hai aram ka din guzarne ka?"],
-        .romanTelugu: ["Ee week lo ninnu ekkuva navvinchina vishayam emiti?",
-                       "Manam kalisi ekkadaina vellagalithe, nuvvu ekkadiki veltav?",
-                       "Nee favourite lazy day plan emiti?"]
+    // Keywords per chart. English + Roman Telugu + Roman Urdu are all included,
+    // so mixed-language text (e.g. "my amma and nanna") still works.
+    static let keywords: [ChartType: Set<String>] = [
+        .genogram: [
+            // English
+            "mother","father","brother","sister","son","daughter","wife","husband","uncle","aunt",
+            "grandmother","grandfather","cousin","family","parents","married","divorced",
+            // Roman Telugu
+            "amma","nanna","anna","akka","thammudu","tammudu","chelli","tatha","nanamma","ammamma",
+            "bava","atta","maradalu","koduku","kuturu","bhaarya","bharta","pelli",
+            // Roman Urdu
+            "ammi","abbu","ami","abu","bhai","bhaiya","behan","baji","chacha","chachi","khala",
+            "dada","dadi","nana","nani","shauhar","biwi","walid","walida","beta","beti","rishtedar"
+        ],
+        .sociogram: [
+            "friend","friends","classmate","group","crush","popular","lonely","social","circle",
+            "snehitudu","snehitulu","friend","andaru",
+            "dost","dosti","yaar","saathi"
+        ],
+        .ecomap: [
+            "neighbor","neighbour","community","support","church","temple","mosque","school",
+            "hospital","charity","resources","agency","teacher","doctor",
+            "inti","illu","gudi","badi",
+            "mohalla","masjid","padosi","madad"
+        ],
+        .orgChart: [
+            "boss","manager","team","colleague","office","company","reports","report","ceo",
+            "director","employee","department","hr","lead","intern",
+            "pani","sir","madam",
+            "kaam","daftar","afsar"
+        ]
     ]
 
-    private static func replies(_ intent: ChatIntent, _ lang: ChatLanguage) -> [String] {
-        switch (intent, lang) {
-        case (.greeting, .english): return ["Hey! So good to hear from you 😊", "Hi! How's your day going?", "Hello you! I was just thinking of you"]
-        case (.greeting, .romanUrdu): return ["Assalamualaikum! Tumhein dekh ke acha laga 😊", "Hey! Aaj ka din kaisa ja raha hai?", "Hello! Main abhi tumhare baare mein soch raha tha"]
-        case (.greeting, .romanTelugu): return ["Hey! Ninnu chusi chala happy ga undi 😊", "Hi! Ee roju ela undi?", "Hello! Ippude ninne gurtu chesukunnanu"]
+    static func suggest(for text: String) -> ChartSuggestion {
+        let (lang, _) = LanguageDetector.detect(text)
+        let words = Set(LanguageDetector.tokens(text))
 
-        case (.howAreYou, .english): return ["I'm great now that we're talking 😄 How about you?", "Doing good! Tell me about your day", "Better after seeing your message! You?"]
-        case (.howAreYou, .romanUrdu): return ["Main theek hun, tumse baat karke aur acha lag raha hai 😄 Tum batao?", "Sab acha hai! Apne din ke baare mein batao", "Tumhara message dekh ke mood acha ho gaya! Tum kaise ho?"]
-        case (.howAreYou, .romanTelugu): return ["Nenu bagunnanu, nuvvu matladite inka bagundi 😄 Nuvvu ela unnav?", "Bagunna! Nee day gurinchi cheppu", "Nee message chusaka happy ga undi! Nuvvu bagunnava?"]
-
-        case (.missYou, .english): return ["I miss you too, more than I can say 💛", "Aww, you're always on my mind", "Can't wait to see you soon"]
-        case (.missYou, .romanUrdu): return ["Mujhe bhi tumhari bohat yaad aati hai 💛", "Tum hamesha mere khayalon mein rehte ho", "Jaldi milte hain, intezar nahi hota"]
-        case (.missYou, .romanTelugu): return ["Naku kuda ninnu chala miss avutunnanu 💛", "Nuvvu eppudu naa aalochanallone untav", "Tvaralo kaluddam, wait cheyyalekapotunna"]
-
-        case (.goodNight, .english): return ["Good night! Sweet dreams 🌙", "Sleep well, talk tomorrow 💤", "Night night, thanks for today ❤️"]
-        case (.goodNight, .romanUrdu): return ["Shab bakhair! Meethe khwab 🌙", "Araam se sona, kal baat karte hain 💤", "Good night, aaj ke din ka shukriya ❤️"]
-        case (.goodNight, .romanTelugu): return ["Good night! Manchi kalalu raavali 🌙", "Hayiga padukో, repu matladukundam 💤", "Subharatri, ee roju ki thanks ❤️"]
-
-        case (.goodMorning, .english): return ["Good morning! Hope today is wonderful ☀️", "Morning! Did you sleep well?", "Rise and shine, make today great!"]
-        case (.goodMorning, .romanUrdu): return ["Subah bakhair! Aaj ka din shandar ho ☀️", "Good morning! Neend poori hui?", "Uth jao, aaj kuch acha hone wala hai!"]
-        case (.goodMorning, .romanTelugu): return ["Good morning! Ee roju super ga undali ☀️", "Subhodayam! Nidra bagapattinda?", "Lechi, ee roju manchiga gadupu!"]
-
-        case (.sorry, .english): return ["It's okay, I understand. Thanks for telling me 🤍", "No worries, let's talk it through", "I appreciate you saying that"]
-        case (.sorry, .romanUrdu): return ["Koi baat nahi, main samajhta hun 🤍", "Fikar mat karo, aaram se baat karte hain", "Tumne kaha, ye mere liye bohat maayne rakhta hai"]
-        case (.sorry, .romanTelugu): return ["Parledu, nenu artham chesukunnanu 🤍", "Chinta padaku, aaram ga matladukundam", "Nuvvu cheppadam naku chala important"]
-
-        case (.sad, .english): return ["I'm here for you. Want to talk about it?", "Sorry you're feeling this way, I'm listening 🤍", "You're not alone, I've got you"]
-        case (.sad, .romanUrdu): return ["Main tumhare saath hun. Baat karna chahoge?", "Mujhe afsos hai, main sun raha hun 🤍", "Tum akele nahi ho, main hun na"]
-        case (.sad, .romanTelugu): return ["Nenu nee tho unnanu. Matladalani undha?", "Baadha ga undi, nenu vintunnanu 🤍", "Nuvvu ontari kaadu, nenu unnanu"]
-
-        case (.thanks, .english): return ["Anytime! You mean a lot to me", "Always happy to help 😊", "Of course, that's what I'm here for"]
-        case (.thanks, .romanUrdu): return ["Koi baat nahi, tum mere liye khaas ho", "Hamesha khushi se 😊", "Tumhare liye kuch bhi"]
-        case (.thanks, .romanTelugu): return ["Parledu, nuvvu naku chala special", "Eppudaina happy ga 😊", "Nee kosam em aina chestanu"]
-
-        case (.food, .english): return ["Yes, I ate! What did you have?", "Not yet, want to grab something together?", "Don't skip meals, take care of yourself 🍽️"]
-        case (.food, .romanUrdu): return ["Haan khaya! Tumne kya khaya?", "Abhi nahi, saath khaein?", "Khana mat chhodna, apna khayal rakho 🍽️"]
-        case (.food, .romanTelugu): return ["Avunu tinnanu! Nuvvu emi tinnav?", "Inka ledu, kalisi tindama?", "Bhojanam skip cheyyaku, jagratta 🍽️"]
-
-        case (.plans, .english): return ["I'd love that! When are you free?", "Sounds like a plan, you pick the place", "Yes! Let's make it happen this weekend"]
-        case (.plans, .romanUrdu): return ["Mujhe bohat pasand aayega! Tum kab free ho?", "Plan pakka, jagah tum chuno", "Haan! Is weekend pakka karte hain"]
-        case (.plans, .romanTelugu): return ["Naku chala nachutundi! Nuvvu eppudu free?", "Plan fix, place nuvvu choose chey", "Avunu! Ee weekend fix chedam"]
-
-        case (.compliment, .english): return ["That's so sweet, you made me blush 😊", "You always know what to say", "Right back at you, you're amazing"]
-        case (.compliment, .romanUrdu): return ["Bohat pyara kaha, main sharma gaya 😊", "Tum hamesha acha bolte ho", "Tum bhi kamaal ho"]
-        case (.compliment, .romanTelugu): return ["Chala sweet ga cheppav, nenu blush ayya 😊", "Nuvvu eppudu manchiga matladatav", "Nuvvu kuda amazing"]
-
-        case (.general, .english): return ["Tell me more, I'm curious 😊", "That's interesting! What happened next?", "I love hearing about your day"]
-        case (.general, .romanUrdu): return ["Aur batao, mujhe janna hai 😊", "Interesting! Phir kya hua?", "Mujhe tumhari baatein sun'na pasand hai"]
-        case (.general, .romanTelugu): return ["Inka cheppu, telusukovalani undi 😊", "Interesting! Tarvata emi aindi?", "Nee matalu vinadam naku istam"]
+        var scores: [ChartType: Int] = [:]
+        for (chart, set) in keywords {
+            scores[chart] = words.intersection(set).count
         }
+
+        // Highest score wins. No hits -> Network Graph.
+        let best = scores.max { $0.value < $1.value }
+        let total = scores.values.reduce(0, +)
+        let topScore = best?.value ?? 0
+
+        // How many charts have at least one hit
+        let charts = scores.filter { $0.value > 0 }.count
+
+        let chosen: ChartType
+        if total == 0 || topScore == 0 {
+            chosen = .networkGraph
+        } else if charts >= 3 {
+            chosen = .networkGraph   // many kinds of connections mixed together
+        } else {
+            chosen = best!.key
+        }
+        return ChartSuggestion(language: lang, chart: chosen, scores: scores)
+    }
+}
+
+// MARK: - Quick test (call from anywhere, e.g. onAppear)
+
+func runChartSuggestorDemo() {
+    let samples = [
+        "My mother and father live with my brother",
+        "amma nanna akka andaru ela unnaru",
+        "mera bhai aur ammi ghar mein hain",
+        "my boss and team manager at office",
+        "nenu friends tho unnanu",
+        "hello"
+    ]
+    for s in samples {
+        let r = ChartSuggestor.suggest(for: s)
+        print("\"\(s)\" -> \(r.language.rawValue) -> \(r.chart.rawValue)")
     }
 }
