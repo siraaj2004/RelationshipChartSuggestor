@@ -22,7 +22,7 @@ jobs:
 
       - name: Lint Info.plist files
         run: |
-          for f in App/Info.plist KeyboardExtension/Info.plist; do
+          for f in RelationshipChartSuggestor/Info.plist KeyboardExtension/Info.plist; do
             echo "=== $f ==="
             head -n 5 "$f"
             plutil -lint "$f"
@@ -66,3 +66,4 @@ jobs:
         with:
           name: build-log
           path: build.log
+          if-no-files-found: ignore
