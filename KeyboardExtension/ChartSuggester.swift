@@ -1,123 +1,75 @@
 import Foundation
-import NaturalLanguage
 
-enum TextLanguage: String {
-    case english = "English"
-    case romanTelugu = "Roman Telugu"
-    case romanUrdu = "Roman Urdu"
-    case unknown = "Unknown"
-}
+/// Suggests which relationship chart fits the chat text.
+/// Only charts with evidence in the text are returned; nothing is shown for empty/unclear text.
+enum ChartSuggester {
 
-enum ChartType: String, CaseIterable {
-    case sociogram = "Sociogram"
-    case genogram = "Genogram"
-    case ecomap = "Ecomap"
-    case orgChart = "Org Chart"
-    case networkGraph = "Network Graph"
-
-    var purpose: String {
-        switch self {
-        case .sociogram:    return "Friends and group bonds"
-        case .genogram:     return "Family tree and relations"
-        case .ecomap:       return "Support systems around you"
-        case .orgChart:     return "Work hierarchy and reporting"
-        case .networkGraph: return "General connections"
-        }
-    }
-}
-
-struct LanguageDetector {
-    static let teluguWords: Set<String> = [
-        "nenu", "meeru", "nuvvu", "amma", "nanna", "anna", "akka", "tammudu",
-        "chelli", "bava", "babai", "attayya", "mama", "ledu", "undi", "ela",
-        "enti", "cheppu", "kani", "ra", "andi", "ekkada", "evaru", "bagunnava",
-        "bagunnanu", "ayindi", "vachindi", "pani", "memu", "vaadu", "ame",
-        "ninna", "repu", "ippudu", "chala", "baagundi", "thatha", "ammamma"
-    ]
-    static let urduWords: Set<String> = [
-        "mein", "aap", "tum", "hum", "ammi", "abbu", "bhai", "behan",
-        "baji", "chacha", "khala", "phupho", "nahi", "hai", "hain", "kya",
-        "kaise", "theek", "acha", "dost", "shukriya", "kaam", "ghar", "walid",
-        "walida", "beta", "beti", "yaar", "mera", "meri", "aapka", "kal",
-        "aaj", "bohat", "nani", "dada", "dadi"
-    ]
-
-    static func detect(_ text: String) -> TextLanguage {
-        let words = tokens(text)
-        guard !words.isEmpty else { return .unknown }
-
-        let te = words.filter { teluguWords.contains($0) }.count
-        let ur = words.filter { urduWords.contains($0) }.count
-
-        if te > ur && te >= 1 { return .romanTelugu }
-        if ur > te && ur >= 1 { return .romanUrdu }
-
-        let r = NLLanguageRecognizer()
-        r.processString(text)
-        if r.dominantLanguage == .english { return .english }
-        return .unknown
+    private struct Rule {
+        let chart: ChartType
+        let label: String
+        let strong: Set<String>   // clear evidence, worth 2 points
+        let weak: Set<String>     // ambiguous words (e.g. "bhai" can be family or a friend), 1 point
     }
 
-    static func tokens(_ text: String) -> [String] {
-        text.lowercased()
-            .components(separatedBy: CharacterSet.letters.inverted)
-            .filter { !$0.isEmpty }
-    }
-}
+    private static let rules: [Rule] = [
+        Rule(chart: .genogram, label: "family words",
+             strong: ["family","mother","father","mom","dad","amma","nanna","ammi","abbu","walid","walida",
+                      "brother","sister","parents","grandfather","grandmother","uncle","aunt","cousin",
+                      "thatha","ammamma","nani","dada","dadi","tammudu","chelli","babai","chacha","khala",
+                      "husband","wife","son","daughter"],
+             weak: ["bhai","behan","anna","akka","mama","bava","beta","beti","bro","sis"]),
 
-struct ChartSuggestion: Identifiable {
-    let id = UUID()
-    let chart: ChartType
-    let reason: String
-}
+        Rule(chart: .orgChart, label: "work words",
+             strong: ["boss","manager","team","office","company","colleague","colleagues","hr","department",
+                      "employee","ceo","intern","salary","meeting","project","client","deadline","sir","madam"],
+             weak: ["work","job","kaam","pani"]),
 
-struct ChartSuggestor {
-    static let family: Set<String> = [
-        "amma", "nanna", "ammi", "abbu", "mother", "father", "brother", "sister",
-        "bhai", "behan", "anna", "akka", "tammudu", "chelli", "family", "walid",
-        "walida", "beta", "beti", "thatha", "ammamma", "nani", "dada", "dadi",
-        "uncle", "aunt", "cousin", "bava", "babai", "mama", "chacha", "khala"
-    ]
-    static let work: Set<String> = [
-        "boss", "manager", "team", "office", "company", "colleague", "hr",
-        "department", "employee", "ceo", "intern", "salary", "meeting"
-    ]
-    static let support: Set<String> = [
-        "school", "hospital", "community", "ngo", "support", "agency",
-        "neighbour", "neighbor", "college", "mosque", "temple", "church", "doctor"
-    ]
-    static let friends: Set<String> = [
-        "friend", "friends", "dost", "yaar", "group", "class", "classmate", "gang"
+        Rule(chart: .ecomap, label: "support / community words",
+             strong: ["school","hospital","community","ngo","support","agency","neighbour","neighbor",
+                      "mosque","temple","church","doctor","hostel","teacher","counsellor","counselor"],
+             weak: ["college","help","madad"]),
+
+        Rule(chart: .sociogram, label: "friend / group words",
+             strong: ["friend","friends","dost","yaar","group","classmate","classmates","gang","batch","buddy"],
+             weak: ["class","exam","exams","college","bhai","bro","anna","party","trip"])
     ]
 
-    static func suggest(for text: String) -> [ChartSuggestion] {
-        let words = Set(LanguageDetector.tokens(text))
-        let language = LanguageDetector.detect(text)
-        var out: [ChartSuggestion] = []
+    static func suggest(for text: String, language: ChatLanguage) -> [ChartSuggestion] {
+        let words = Set(LanguageDetector.tokens(text) + LanguageDetector.tokens(text).compactMap { w -> String? in
+            // simple plural handling: "friends" -> "friend", "brothers" -> "brother"
+            w.count > 3 && w.hasSuffix("s") ? String(w.dropLast()) : nil
+        })
+        guard !words.isEmpty else { return [] }
 
-        func add(_ chart: ChartType, _ reason: String) {
-            if !out.contains(where: { $0.chart == chart }) {
-                out.append(ChartSuggestion(chart: chart, reason: reason))
+        var scored: [(rule: Rule, score: Int, hits: [String])] = []
+        for rule in rules {
+            let strongHits = words.intersection(rule.strong)
+            let weakHits = words.intersection(rule.weak).subtracting(strongHits)
+            let score = strongHits.count * 2 + weakHits.count
+            if score > 0 {
+                let hits = (strongHits.sorted() + weakHits.sorted())
+                    .filter { !($0.hasSuffix("s") && words.contains(String($0.dropLast()))) }   // show "exam", not "exam, exams"
+                scored.append((rule, score, hits))
             }
         }
 
-        if !words.isDisjoint(with: family)  { add(.genogram,  "Family words found") }
-        if !words.isDisjoint(with: work)    { add(.orgChart,  "Work words found") }
-        if !words.isDisjoint(with: support) { add(.ecomap,    "Support / community words found") }
-        if !words.isDisjoint(with: friends) { add(.sociogram, "Friend / group words found") }
-
-        if out.isEmpty {
-            switch language {
-            case .romanTelugu, .romanUrdu:
-                add(.genogram,  "\(language.rawValue) text: family chart is a good start")
-                add(.sociogram, "\(language.rawValue) text: friends and groups")
-            case .english:
-                add(.networkGraph, "English text: general connections")
-                add(.orgChart,     "English text: roles and hierarchy")
-            case .unknown:
-                add(.networkGraph, "Not enough text to tell")
-            }
+        if scored.isEmpty {
+            // Not enough signal. Only say something if there is actual chat text to base it on.
+            guard words.count >= 3 else { return [] }
+            return [ChartSuggestion(chart: .networkGraph,
+                                    reason: "No specific relationship words in this \(language.rawValue) chat, so a general network fits",
+                                    score: 0)]
         }
-        return out
+
+        let top = scored.map { $0.score }.max() ?? 0
+        return scored
+            .filter { $0.score * 2 >= top }                       // drop clearly weaker matches
+            .sorted { $0.score > $1.score }
+            .prefix(3)
+            .map { item in
+                ChartSuggestion(chart: item.rule.chart,
+                                reason: "Found \(item.rule.label): \(item.hits.prefix(3).joined(separator: ", "))",
+                                score: item.score)
+            }
     }
 }
