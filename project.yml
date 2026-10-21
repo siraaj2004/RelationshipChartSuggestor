@@ -16,13 +16,16 @@ targets:
     type: application
     platform: iOS
     sources:
-      - App
-      - Shared
+      - RelationshipChartSuggestor
+      - Models.swift
+      - LanguageDetector.swift
+      - ChartSuggester.swift
+      - OCRService.swift
     dependencies:
       - target: RelationshipChartKeyboard
         embed: true
     info:
-      path: App/Info.plist
+      path: RelationshipChartSuggestor/Info.plist
       properties:
         CFBundleDisplayName: Relationship Charts
         UILaunchScreen: {}
@@ -39,7 +42,10 @@ targets:
     platform: iOS
     sources:
       - KeyboardExtension
-      - Shared
+      - Models.swift
+      - LanguageDetector.swift
+      - ChartSuggester.swift
+      - OCRService.swift
     info:
       path: KeyboardExtension/Info.plist
       properties:
